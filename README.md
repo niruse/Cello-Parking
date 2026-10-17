@@ -39,4 +39,11 @@ Paste it into a new dashboard's raw configuration editor, then replace `12345678
 | --- | --- | --- |
 | <img src="examples/images/dashboard-parked.png" width="260"> | <img src="examples/images/dashboard-not-parked.png" width="260"> | <img src="examples/images/dashboard-account.png" width="260"> |
 
+### Notifications
+While a parking runs, the car's tracker moving away (or its drive signal turning on) sends a push to the phone
+that started the parking, with **Stop parking** / **Keep it running** buttons, plus a Home Assistant notification.
+Reminders after a set time and Cello's confirmation questions show up the same way.
+
+<img src="examples/images/notifications.png" width="320">
+
 The screenshots use invented data; `python examples/render_screenshots.py` redraws them from the dashboard file.

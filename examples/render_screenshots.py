@@ -6,7 +6,8 @@ The real button-card (downloaded once into examples/.cache/) draws every
 custom:button-card from the dashboard file itself, fed with the made-up
 readings below — no real plate, place or account — inside a minimal page in
 Home Assistant's dark style. Headless Edge or Chrome captures the pages into
-examples/images/. Other card types are drawn as simple look-alikes.
+examples/images/. Other card types are drawn as simple look-alikes, and the
+notifications page mirrors the texts the integration sends.
 """
 from __future__ import annotations
 
@@ -165,6 +166,47 @@ customElements.whenDefined('button-card').then(() => {
 """
 
 
+NOTIFY_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<style>
+html,body{overflow:hidden}
+body{margin:0;background:#111;font-family:Roboto,-apple-system,Arial,sans-serif;color:#e1e1e1}
+main{width:440px;margin:0 auto;padding:14px 0}
+.t{font-size:13px;color:#9b9b9b;margin:18px 6px 8px;text-transform:uppercase;letter-spacing:.06em}
+.n{background:#1c1c1c;border:1px solid #2e2e2e;border-radius:14px;margin-bottom:12px}
+.n h3{margin:0;padding:16px 18px 6px;font-size:20px;font-weight:400}
+.n p{margin:0;padding:4px 18px 0;font-size:14px;line-height:1.45;white-space:pre-line}
+.n .ago{text-align:right;color:#9b9b9b;font-size:13px;padding:8px 18px 12px}
+.n .act{border-top:1px solid #2e2e2e;text-align:right;padding:12px 22px;color:#29b6f6;font-weight:500}
+.push{background:rgba(60,60,64,.92);border-radius:22px;padding:12px 14px;color:#fff;font-family:-apple-system,Arial,sans-serif}
+.push .top{display:flex;align-items:center;gap:8px;font-size:12px;color:#c8c8cc}
+.push .app{width:20px;height:20px;border-radius:5px;background:#18bcf2;display:inline-block}
+.push b{display:block;font-size:15px;margin-top:6px}
+.push span{font-size:14px;line-height:1.35;display:block;margin-top:2px}
+.btns{margin-top:8px;background:rgba(60,60,64,.92);border-radius:14px;overflow:hidden}
+.btns div{padding:12px 16px;font-size:16px;border-top:1px solid rgba(255,255,255,.08)}
+.btns div:first-child{border-top:none;color:#ff453a}
+</style></head><body><main>
+<div class="t">Phone push (long-press for actions)</div>
+<div class="push"><div class="top"><i class="app"></i>HOME ASSISTANT<span style="margin-left:auto">now</span></div>
+<b>🅿️ Parking still running</b>
+<span>Car 12345678 seems to be moved (850 m away) while Cello parking in רחבי העיר is still running.</span></div>
+<div class="btns"><div>Stop parking</div><div>Keep it running</div></div>
+<div class="t">Home Assistant notifications</div>
+<div class="n"><h3>Cello: parking still running</h3>
+<p>Car 12345678 seems to be moved (850 m away) while Cello parking in רחבי העיר is still running.</p>
+<div class="ago">26 seconds ago</div><div class="act">Dismiss</div></div>
+<div class="n"><h3>Cello parking still running</h3>
+<p>Car 12345678 has been parked with Cello for 120 minutes (רחבי העיר).</p>
+<div class="ago">3 minutes ago</div><div class="act">Dismiss</div></div>
+<div class="n"><h3>Cello: confirm parking for car 12345678</h3>
+<p>Parking is free at this hour in this zone. Start anyway?
+
+Press Start parking again within 3 minutes to accept.</p>
+<div class="ago">1 hour ago</div><div class="act">Dismiss</div></div>
+</main></body></html>
+"""
+
+
 def flatten(cards: list[dict], st_now: dict) -> list[dict]:
     """Sections' cards as the page draws them: grids as rows, conditionals resolved."""
     out: list[dict] = []
@@ -234,6 +276,16 @@ def main() -> None:
                 check=True, capture_output=True, timeout=120,
             )
             print("wrote", target)
+        html_path = Path(tmp) / "notifications.html"
+        html_path.write_text(NOTIFY_PAGE, encoding="utf-8")
+        target = OUT / "notifications.png"
+        subprocess.run(
+            [exe, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+             "--force-device-scale-factor=2", "--window-size=500,900",
+             f"--screenshot={target}", html_path.as_uri()],
+            check=True, capture_output=True, timeout=120,
+        )
+        print("wrote", target)
 
 
 if __name__ == "__main__":
