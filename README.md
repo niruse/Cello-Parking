@@ -34,3 +34,9 @@ a countdown ring while parked, Start / Stop / Extend, zone from location, quick-
 account totals and recent parkings. It needs [button-card](https://github.com/custom-cards/button-card) from HACS.
 Paste it into a new dashboard's raw configuration editor, then replace `12345678` with your plate and the two
 `CITY – ZONE [...]` chips with zones from your car's Parking zone list.
+
+| Parked | Not parked | Account |
+| --- | --- | --- |
+| <img src="examples/images/dashboard-parked.png" width="260"> | <img src="examples/images/dashboard-not-parked.png" width="260"> | <img src="examples/images/dashboard-account.png" width="260"> |
+
+The screenshots use invented data; `python examples/render_screenshots.py` redraws them from the dashboard file.
