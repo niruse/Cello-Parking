@@ -1,0 +1,12 @@
+{
+  "domain": "cello",
+  "name": "Cello",
+  "codeowners": ["@niruse"],
+  "config_flow": true,
+  "documentation": "https://github.com/niruse/Cello-Parking",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/niruse/Cello-Parking/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

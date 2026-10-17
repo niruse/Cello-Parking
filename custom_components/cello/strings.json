@@ -1,0 +1,237 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sign in to Cello",
+        "description": "Enter the phone number of your Cello account. Cello will text you a sign-in code.",
+        "data": {
+          "phone": "Phone number"
+        }
+      },
+      "code": {
+        "title": "SMS code",
+        "description": "Enter the code Cello sent to {phone}.",
+        "data": {
+          "code": "Code"
+        }
+      },
+      "account": {
+        "title": "Choose account",
+        "data": {
+          "account": "Account"
+        }
+      }
+    },
+    "error": {
+      "invalid_phone": "That does not look like a phone number.",
+      "cannot_send_code": "Cello did not send a code. Check the number.",
+      "invalid_code": "Wrong or expired code.",
+      "cannot_connect": "Could not reach Cello."
+    },
+    "abort": {
+      "already_configured": "This account is already set up.",
+      "reauth_successful": "Signed in again.",
+      "wrong_account": "That code belongs to a different account."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cello options",
+        "menu_options": {
+          "general": "Refresh, reminders and auto-renew",
+          "pick_car": "A car: location, drive detection and alerts"
+        }
+      },
+      "general": {
+        "title": "Cello options",
+        "data": {
+          "scan_interval": "Refresh every",
+          "reminder_minutes": "Remind when a parking has run this long (0 = off)",
+          "renew_before_minutes": "Auto-renew this long before Cello's end time"
+        }
+      },
+      "pick_car": {
+        "title": "Which car",
+        "data": {
+          "car": "Car"
+        }
+      },
+      "car": {
+        "title": "Car {car}",
+        "description": "Where the car is and when it drives away. Leave the device empty for automatic: the phone nearest the spot where the parking was started stands in for the car, and its activity sensor (Automotive) tells driving.",
+        "data": {
+          "tracker": "Device on the car (dashcam / tracker / person)",
+          "tracker_backup": "Backup device (used while the first one has no position)",
+          "drive_entity": "Drive signal (ignition, dashcam state…; on / driving = driving)",
+          "notify": "Notify (empty = the phone that parked)",
+          "move_meters": "Moved this far from the parking spot = drove away"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "parking": {
+        "name": "Parking"
+      },
+      "moved_while_parked": {
+        "name": "Moved while parked"
+      }
+    },
+    "button": {
+      "start_parking": {
+        "name": "Start parking"
+      },
+      "stop_parking": {
+        "name": "Stop parking"
+      },
+      "extend_parking": {
+        "name": "Extend parking"
+      },
+      "zone_from_location": {
+        "name": "Zone from location"
+      }
+    },
+    "number": {
+      "park_hours": {
+        "name": "Park for"
+      }
+    },
+    "select": {
+      "zone_choice": {
+        "name": "Parking zone"
+      },
+      "zone_suggestion": {
+        "name": "Suggested zone"
+      }
+    },
+    "switch": {
+      "auto_renew": {
+        "name": "Auto-renew"
+      },
+      "cello_auto_extend": {
+        "name": "Cello auto-extend"
+      },
+      "cello_auto_stop": {
+        "name": "Cello auto-stop"
+      }
+    },
+    "sensor": {
+      "balance": {
+        "name": "Balance"
+      },
+      "month_spend": {
+        "name": "Spent this month"
+      },
+      "month_parkings": {
+        "name": "Parkings this month"
+      },
+      "last_invoice": {
+        "name": "Last invoice"
+      },
+      "payment_card": {
+        "name": "Payment card"
+      },
+      "zone": {
+        "name": "Zone"
+      },
+      "started": {
+        "name": "Parking started"
+      },
+      "ends": {
+        "name": "Parking ends"
+      },
+      "cost": {
+        "name": "Parking cost"
+      },
+      "car_month_spend": {
+        "name": "Spent this month"
+      },
+      "last_parking": {
+        "name": "Last parking"
+      },
+      "car_location": {
+        "name": "Location"
+      },
+      "time_left": {
+        "name": "Time left"
+      }
+    },
+    "text": {
+      "zone_search": {
+        "name": "Zone search"
+      }
+    }
+  },
+  "services": {
+    "start_parking": {
+      "name": "Start parking",
+      "description": "Start a Cello parking for a car. Without city/zone it uses the car's Parking zone choice.",
+      "fields": {
+        "car": {
+          "name": "Car",
+          "description": "Plate number."
+        },
+        "city": {
+          "name": "City ID",
+          "description": "Cello city ID (see Find zones)."
+        },
+        "zone": {
+          "name": "Zone ID",
+          "description": "Cello zone ID (see Find zones)."
+        },
+        "hours": {
+          "name": "Hours",
+          "description": "Let Cello end the parking after this many hours. 0 = until stopped. Defaults to the car's Park for value."
+        },
+        "until": {
+          "name": "Until",
+          "description": "Let Cello end the parking at this time."
+        },
+        "accept_message": {
+          "name": "Accept Cello's message",
+          "description": "If Cello asks to confirm (for example free parking now), accept it without asking."
+        }
+      }
+    },
+    "stop_parking": {
+      "name": "Stop parking",
+      "description": "Stop the car's running Cello parking.",
+      "fields": {
+        "car": {
+          "name": "Car",
+          "description": "Plate number."
+        }
+      }
+    },
+    "extend_parking": {
+      "name": "Extend parking",
+      "description": "Extend the car's running Cello parking.",
+      "fields": {
+        "car": {
+          "name": "Car",
+          "description": "Plate number."
+        },
+        "accept_message": {
+          "name": "Accept Cello's message",
+          "description": "Accept Cello's confirmation message if it asks."
+        }
+      }
+    },
+    "find_zones": {
+      "name": "Find zones",
+      "description": "List the Cello cities and zones at a location.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "Latitude."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Longitude."
+        }
+      }
+    }
+  }
+}
