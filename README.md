@@ -4,6 +4,17 @@ Unofficial Home Assistant integration for **Cello** (formerly Cellopark), the Is
 
 Sign in with your phone number and the SMS code Cello texts you. Every car on the account becomes a device.
 
+## ☕ Support
+
+If you found this project helpful, you can [buy me a coffee](https://coff.ee/niruse)!
+
+## 🚨 Disclaimer
+
+> This is an unofficial integration. You are responsible for the use of your credentials and your
+> data. The author and contributors take no responsibility for any issues, account restrictions or
+> data loss. Use at your own risk.
+
+
 ## Per car
 - **Parking** (on while a parking runs), zone, start, Cello's end time, running cost
 - **Start parking / Stop parking / Extend parking** buttons
