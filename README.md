@@ -27,3 +27,10 @@ Sign in with your phone number and the SMS code Cello texts you. Every car on th
 Refresh interval, reminder after N minutes (0 = off), auto-renew lead time.
 
 Starting, extending and stopping parking costs real money on your Cello account.
+
+## Example dashboard
+[`examples/dashboard.yaml`](examples/dashboard.yaml) is a ready dashboard (Hebrew, right-to-left): an Israeli plate,
+a countdown ring while parked, Start / Stop / Extend, zone from location, quick-zone and duration chips, zone search,
+account totals and recent parkings. It needs [button-card](https://github.com/custom-cards/button-card) from HACS.
+Paste it into a new dashboard's raw configuration editor, then replace `12345678` with your plate and the two
+`CITY – ZONE [...]` chips with zones from your car's Parking zone list.

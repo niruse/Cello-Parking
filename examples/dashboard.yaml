@@ -1,0 +1,744 @@
+# Cello parking dashboard (example)
+#
+# Needs: the Cello integration and custom:button-card (HACS -> Frontend).
+# Add it: Settings -> Dashboards -> Add dashboard -> New from scratch -> menu -> Raw configuration editor,
+# paste this file, then replace:
+#   12345678 / 123-45-678  -> your car's plate (entity ids use the plain digits)
+#   "CITY – ZONE [111]"    -> a zone exactly as your car's "Parking zone" list shows it (Quick zone chips)
+# For a second car, copy the car section and change its plate.
+title: Cello
+views:
+- title: חניה
+  path: cello
+  icon: mdi:parking
+  type: sections
+  max_columns: 3
+  sections:
+  - type: grid
+    cards:
+    - type: custom:button-card
+      entity: binary_sensor.cello_12345678_parking
+      triggers_update:
+      - sensor.cello_12345678_time_left
+      - binary_sensor.cello_12345678_moved_while_parked
+      - sensor.cello_12345678_location
+      - select.cello_12345678_parking_zone
+      - number.cello_12345678_park_for
+      - sensor.cello_12345678_parking_cost
+      - sensor.cello_12345678_parking_ends
+      show_name: false
+      show_icon: false
+      show_state: false
+      tap_action:
+        action: none
+      hold_action:
+        action: none
+      custom_fields:
+        plate: '<div style=''display:inline-flex;align-items:stretch;direction:ltr;border:2px solid #111;border-radius:7px;overflow:hidden;font-family:"Arial
+          Black",Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.35)''><div style=''background:#1f4fbf;color:#fff;font-size:9px;font-weight:700;padding:2px
+          4px;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.1''><span>IL</span><span
+          style=''font-size:8px''>ישראל</span></div><div style=''background:#f7d117;color:#111;font-size:20px;font-weight:900;padding:3px
+          10px;letter-spacing:1px''>123-45-678</div></div>'
+        chip: "[[[ \nconst P = states['binary_sensor.cello_12345678_parking'];\nconst on = !!P && P.state === 'on';\nconst\
+          \ TL = states['sensor.cello_12345678_time_left'];\nconst left = TL && !isNaN(parseFloat(TL.state)) ? parseInt(TL.state)\
+          \ : null;\nconst total = TL ? TL.attributes.total_minutes : null;\nconst M = states['binary_sensor.cello_12345678_moved_while_parked'];\n\
+          const moved = !!M && M.state === 'on';\nconst L = states['sensor.cello_12345678_location'];\nconst dist = L ? L.attributes.distance_from_parking_m\
+          \ : null;\nconst city = L && !['unknown','unavailable'].includes(L.state) ? L.state : null;\nconst Z = states['select.cello_12345678_parking_zone'];\n\
+          const chosen = Z && Z.state !== '—' ? Z.state.replace(/\\s*\\[\\d+\\]$/, '') : null;\nconst H = states['number.cello_12345678_park_for'];\n\
+          const hours = H ? parseFloat(H.state) : 0;\nconst opts = Z ? Z.attributes.options || [] : [];\nconst zid = P ? P.attributes.zone_id\
+          \ : null;\nconst full = zid ? opts.find(o => o.endsWith('[' + zid + ']')) : null;\nconst zoneName = full ? full.replace(/\\\
+          s*\\[\\d+\\]$/, '') : (P && P.attributes.zone) || '';\nconst S = states['sensor.cello_12345678_parking_started'];\n\
+          const E = states['sensor.cello_12345678_parking_ends'];\nconst C = states['sensor.cello_12345678_parking_cost'];\n\
+          const ok = s => s && !['unknown','unavailable'].includes(s.state);\nconst hhmm = s => ok(s) ? new Date(s.state).toLocaleTimeString('he-IL',\
+          \ {hour: '2-digit', minute: '2-digit'}) : '—';\nconst fmtLeft = m => m === null ? '∞' : Math.floor(m / 60) + ':'\
+          \ + String(m % 60).padStart(2, '0');\nconst durText = h => !h ? 'עד עצירה' : (h === 1 ? 'שעה' : (h === 2 ? 'שעתיים'\
+          \ : h + ' שעות'));\n\nconst [txt, bg, fg] = moved ? ['\U0001F697 הרכב זז!', '#e5484d', '#fff'] : on ? ['\U0001F17F\
+          ️ חונה', 'rgba(255,255,255,.22)', '#fff']\n  : ['לא חונה', 'var(--secondary-background-color)', 'var(--secondary-text-color)'];\n\
+          return `<span style=\"background:${bg};color:${fg};display:inline-block;line-height:20px;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:700;white-space:nowrap\"\
+          >${txt}</span>`;\n ]]]"
+        body: "[[[ \nconst P = states['binary_sensor.cello_12345678_parking'];\nconst on = !!P && P.state === 'on';\nconst\
+          \ TL = states['sensor.cello_12345678_time_left'];\nconst left = TL && !isNaN(parseFloat(TL.state)) ? parseInt(TL.state)\
+          \ : null;\nconst total = TL ? TL.attributes.total_minutes : null;\nconst M = states['binary_sensor.cello_12345678_moved_while_parked'];\n\
+          const moved = !!M && M.state === 'on';\nconst L = states['sensor.cello_12345678_location'];\nconst dist = L ? L.attributes.distance_from_parking_m\
+          \ : null;\nconst city = L && !['unknown','unavailable'].includes(L.state) ? L.state : null;\nconst Z = states['select.cello_12345678_parking_zone'];\n\
+          const chosen = Z && Z.state !== '—' ? Z.state.replace(/\\s*\\[\\d+\\]$/, '') : null;\nconst H = states['number.cello_12345678_park_for'];\n\
+          const hours = H ? parseFloat(H.state) : 0;\nconst opts = Z ? Z.attributes.options || [] : [];\nconst zid = P ? P.attributes.zone_id\
+          \ : null;\nconst full = zid ? opts.find(o => o.endsWith('[' + zid + ']')) : null;\nconst zoneName = full ? full.replace(/\\\
+          s*\\[\\d+\\]$/, '') : (P && P.attributes.zone) || '';\nconst S = states['sensor.cello_12345678_parking_started'];\n\
+          const E = states['sensor.cello_12345678_parking_ends'];\nconst C = states['sensor.cello_12345678_parking_cost'];\n\
+          const ok = s => s && !['unknown','unavailable'].includes(s.state);\nconst hhmm = s => ok(s) ? new Date(s.state).toLocaleTimeString('he-IL',\
+          \ {hour: '2-digit', minute: '2-digit'}) : '—';\nconst fmtLeft = m => m === null ? '∞' : Math.floor(m / 60) + ':'\
+          \ + String(m % 60).padStart(2, '0');\nconst durText = h => !h ? 'עד עצירה' : (h === 1 ? 'שעה' : (h === 2 ? 'שעתיים'\
+          \ : h + ' שעות'));\n\nif (on) {\n  const pct = left !== null && total ? Math.max(0, Math.min(100, left / total *\
+          \ 100)) : 100;\n  const warn = left !== null && left <= 15;\n  const ring = warn ? '#f5a524' : '#ffffff';\n  const\
+          \ distLine = dist !== null && dist !== undefined\n    ? `<div style=\"margin-top:10px;font-size:12px;opacity:.9\"\
+          >\U0001F4CD הרכב ${dist} מ' ממקום החניה</div>` : '';\n  const stat = (label, value) => `<div style=\"flex:1;background:rgba(255,255,255,.14);border-radius:14px;padding:8px\
+          \ 6px;text-align:center\">\n      <div style=\"font-size:11px;opacity:.85\">${label}</div><div style=\"font-size:17px;font-weight:800;margin-top:2px\"\
+          >${value}</div></div>`;\n  return `\n  <div style=\"display:flex;align-items:center;gap:16px;margin-top:14px\">\n\
+          \    <div style=\"flex:none;width:126px;height:126px;border-radius:50%;background:conic-gradient(${ring} ${pct}%,\
+          \ rgba(255,255,255,.18) 0);display:flex;align-items:center;justify-content:center\">\n      <div style=\"width:104px;height:104px;border-radius:50%;background:${moved\
+          \ ? '#c62f33' : '#139ea2'};box-shadow:inset 0 2px 8px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center\"\
+          >\n        <div style=\"font-size:30px;font-weight:900;direction:ltr;line-height:1\">${fmtLeft(left)}</div>\n  \
+          \      <div style=\"font-size:12px;opacity:.9;margin-top:4px\">${left === null ? 'ללא סיום' : 'נותרו'}</div>\n \
+          \     </div>\n    </div>\n    <div style=\"flex:1;min-width:0;text-align:right\">\n      <div style=\"font-size:12px;opacity:.85\"\
+          >אזור חניה</div>\n      <div style=\"font-size:19px;font-weight:800;line-height:1.25\">${zoneName}</div>\n     \
+          \ ${distLine}\n    </div>\n  </div>\n  <div style=\"display:flex;gap:8px;margin-top:14px\">\n    ${stat('התחלה',\
+          \ hhmm(S))}${stat('סיום', hhmm(E))}${stat('עלות', ok(C) ? '₪' + C.state : '—')}\n  </div>`;\n}\nconst where = city\
+          \ ? `<div style=\"margin-top:6px;font-size:13px;color:var(--secondary-text-color)\">\U0001F4CD הרכב נמצא ב<b>${city}</b></div>`\
+          \ : '';\nreturn `\n  <div style=\"margin-top:16px;text-align:right\">\n    <div style=\"font-size:26px;font-weight:900\"\
+          >אין חניה פעילה</div>\n    ${where}\n    <div style=\"display:flex;gap:8px;margin-top:14px\">\n      <div style=\"\
+          flex:2;background:var(--secondary-background-color);border-radius:14px;padding:9px 10px\">\n        <div style=\"\
+          font-size:11px;color:var(--secondary-text-color)\">אזור לחניה הבאה</div>\n        <div style=\"font-size:15px;font-weight:700;margin-top:2px\"\
+          >${chosen || 'לא נבחר — בחר למטה'}</div></div>\n      <div style=\"flex:1;background:var(--secondary-background-color);border-radius:14px;padding:9px\
+          \ 10px\">\n        <div style=\"font-size:11px;color:var(--secondary-text-color)\">משך</div>\n        <div style=\"\
+          font-size:15px;font-weight:700;margin-top:2px\">${durText(hours)}</div></div>\n    </div>\n  </div>`;\n ]]]"
+      styles:
+        card:
+        - border-radius: 22px
+        - direction: rtl
+        - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+        - padding: 18px
+        - background: "[[[ \nconst P = states['binary_sensor.cello_12345678_parking'];\nconst on = !!P && P.state === 'on';\n\
+            const TL = states['sensor.cello_12345678_time_left'];\nconst left = TL && !isNaN(parseFloat(TL.state)) ? parseInt(TL.state)\
+            \ : null;\nconst total = TL ? TL.attributes.total_minutes : null;\nconst M = states['binary_sensor.cello_12345678_moved_while_parked'];\n\
+            const moved = !!M && M.state === 'on';\nconst L = states['sensor.cello_12345678_location'];\nconst dist = L ?\
+            \ L.attributes.distance_from_parking_m : null;\nconst city = L && !['unknown','unavailable'].includes(L.state)\
+            \ ? L.state : null;\nconst Z = states['select.cello_12345678_parking_zone'];\nconst chosen = Z && Z.state !==\
+            \ '—' ? Z.state.replace(/\\s*\\[\\d+\\]$/, '') : null;\nconst H = states['number.cello_12345678_park_for'];\n\
+            const hours = H ? parseFloat(H.state) : 0;\nconst opts = Z ? Z.attributes.options || [] : [];\nconst zid = P ?\
+            \ P.attributes.zone_id : null;\nconst full = zid ? opts.find(o => o.endsWith('[' + zid + ']')) : null;\nconst\
+            \ zoneName = full ? full.replace(/\\s*\\[\\d+\\]$/, '') : (P && P.attributes.zone) || '';\nconst S = states['sensor.cello_12345678_parking_started'];\n\
+            const E = states['sensor.cello_12345678_parking_ends'];\nconst C = states['sensor.cello_12345678_parking_cost'];\n\
+            const ok = s => s && !['unknown','unavailable'].includes(s.state);\nconst hhmm = s => ok(s) ? new Date(s.state).toLocaleTimeString('he-IL',\
+            \ {hour: '2-digit', minute: '2-digit'}) : '—';\nconst fmtLeft = m => m === null ? '∞' : Math.floor(m / 60) + ':'\
+            \ + String(m % 60).padStart(2, '0');\nconst durText = h => !h ? 'עד עצירה' : (h === 1 ? 'שעה' : (h === 2 ? 'שעתיים'\
+            \ : h + ' שעות'));\n\nif (moved) return 'linear-gradient(135deg, #b3261e, #e5484d)';\nif (on) return 'linear-gradient(135deg,\
+            \ #0e8a8e, #29c5c8)';\nreturn 'var(--ha-card-background, var(--card-background-color))';\n ]]]"
+        - color: "[[[ \nconst P = states['binary_sensor.cello_12345678_parking'];\nconst on = !!P && P.state === 'on';\nconst\
+            \ TL = states['sensor.cello_12345678_time_left'];\nconst left = TL && !isNaN(parseFloat(TL.state)) ? parseInt(TL.state)\
+            \ : null;\nconst total = TL ? TL.attributes.total_minutes : null;\nconst M = states['binary_sensor.cello_12345678_moved_while_parked'];\n\
+            const moved = !!M && M.state === 'on';\nconst L = states['sensor.cello_12345678_location'];\nconst dist = L ?\
+            \ L.attributes.distance_from_parking_m : null;\nconst city = L && !['unknown','unavailable'].includes(L.state)\
+            \ ? L.state : null;\nconst Z = states['select.cello_12345678_parking_zone'];\nconst chosen = Z && Z.state !==\
+            \ '—' ? Z.state.replace(/\\s*\\[\\d+\\]$/, '') : null;\nconst H = states['number.cello_12345678_park_for'];\n\
+            const hours = H ? parseFloat(H.state) : 0;\nconst opts = Z ? Z.attributes.options || [] : [];\nconst zid = P ?\
+            \ P.attributes.zone_id : null;\nconst full = zid ? opts.find(o => o.endsWith('[' + zid + ']')) : null;\nconst\
+            \ zoneName = full ? full.replace(/\\s*\\[\\d+\\]$/, '') : (P && P.attributes.zone) || '';\nconst S = states['sensor.cello_12345678_parking_started'];\n\
+            const E = states['sensor.cello_12345678_parking_ends'];\nconst C = states['sensor.cello_12345678_parking_cost'];\n\
+            const ok = s => s && !['unknown','unavailable'].includes(s.state);\nconst hhmm = s => ok(s) ? new Date(s.state).toLocaleTimeString('he-IL',\
+            \ {hour: '2-digit', minute: '2-digit'}) : '—';\nconst fmtLeft = m => m === null ? '∞' : Math.floor(m / 60) + ':'\
+            \ + String(m % 60).padStart(2, '0');\nconst durText = h => !h ? 'עד עצירה' : (h === 1 ? 'שעה' : (h === 2 ? 'שעתיים'\
+            \ : h + ' שעות'));\nreturn on || moved ? '#fff' : 'var(--primary-text-color)'; ]]]"
+        grid:
+        - grid-template-areas: '"plate chip" "body body"'
+        - grid-template-columns: 1fr auto
+        - align-items: center
+        custom_fields:
+          plate:
+          - justify-self: start
+          chip:
+          - justify-self: end
+          body:
+          - justify-self: stretch
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: binary_sensor.cello_12345678_parking
+        state: 'on'
+      card:
+        type: grid
+        columns: 2
+        square: false
+        cards:
+        - type: custom:button-card
+          name: סיום חניה
+          icon: mdi:stop-circle-outline
+          show_state: false
+          tap_action:
+            action: call-service
+            service: button.press
+            target:
+              entity_id: button.cello_12345678_stop_parking
+            confirmation:
+              text: לסיים את החניה של 123-45-678?
+          hold_action:
+            action: none
+          styles:
+            card:
+            - border-radius: 22px
+            - direction: rtl
+            - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+            - height: 56px
+            - background: '#e5484d'
+            - color: '#fff'
+            - padding: 0 14px
+            grid:
+            - grid-template-areas: '"i n"'
+            - grid-template-columns: 34px 1fr
+            - grid-template-rows: 1fr
+            - align-content: center
+            - align-items: center
+            - column-gap: 10px
+            - row-gap: 2px
+            - height: 100%
+            img_cell:
+            - width: 34px
+            - height: 34px
+            - justify-content: center
+            - align-self: center
+            icon:
+            - width: 26px
+            - color: '#fff'
+            name:
+            - justify-self: start
+            - align-self: center
+            - font-weight: '800'
+            - font-size: 16px
+            label:
+            - justify-self: start
+            - font-size: 12px
+            - opacity: '.9'
+            - white-space: nowrap
+            - overflow: hidden
+            - text-overflow: ellipsis
+            - max-width: 100%
+        - type: custom:button-card
+          name: הארכה
+          icon: mdi:timer-plus-outline
+          show_state: false
+          tap_action:
+            action: call-service
+            service: button.press
+            target:
+              entity_id: button.cello_12345678_extend_parking
+            confirmation:
+              text: להאריך את החניה של 123-45-678?
+          hold_action:
+            action: none
+          styles:
+            card:
+            - border-radius: 22px
+            - direction: rtl
+            - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+            - height: 56px
+            - background: '#0e8a8e'
+            - color: '#fff'
+            - padding: 0 14px
+            grid:
+            - grid-template-areas: '"i n"'
+            - grid-template-columns: 34px 1fr
+            - grid-template-rows: 1fr
+            - align-content: center
+            - align-items: center
+            - column-gap: 10px
+            - row-gap: 2px
+            - height: 100%
+            img_cell:
+            - width: 34px
+            - height: 34px
+            - justify-content: center
+            - align-self: center
+            icon:
+            - width: 26px
+            - color: '#fff'
+            name:
+            - justify-self: start
+            - align-self: center
+            - font-weight: '800'
+            - font-size: 16px
+            label:
+            - justify-self: start
+            - font-size: 12px
+            - opacity: '.9'
+            - white-space: nowrap
+            - overflow: hidden
+            - text-overflow: ellipsis
+            - max-width: 100%
+    - type: conditional
+      conditions:
+      - condition: state
+        entity: binary_sensor.cello_12345678_parking
+        state: 'off'
+      card:
+        type: vertical-stack
+        cards:
+        - type: custom:button-card
+          name: התחל חניה
+          icon: mdi:play-circle
+          show_state: false
+          tap_action:
+            action: call-service
+            service: button.press
+            target:
+              entity_id: button.cello_12345678_start_parking
+            confirmation:
+              text: להתחיל חניה בתשלום לרכב 123-45-678 באזור ובמשך שנבחרו?
+          hold_action:
+            action: none
+          styles:
+            card:
+            - border-radius: 22px
+            - direction: rtl
+            - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+            - height: 68px
+            - background: 'linear-gradient(135deg, #0e8a8e, #29c5c8)'
+            - color: '#fff'
+            - padding: 0 14px
+            grid:
+            - grid-template-areas: '"i n" "i l"'
+            - grid-template-columns: 34px 1fr
+            - grid-template-rows: min-content min-content
+            - align-content: center
+            - align-items: center
+            - column-gap: 10px
+            - row-gap: 2px
+            - height: 100%
+            img_cell:
+            - width: 34px
+            - height: 34px
+            - justify-content: center
+            - align-self: center
+            icon:
+            - width: 26px
+            - color: '#fff'
+            name:
+            - justify-self: start
+            - align-self: center
+            - font-weight: '800'
+            - font-size: 16px
+            label:
+            - justify-self: start
+            - font-size: 12px
+            - opacity: '.9'
+            - white-space: nowrap
+            - overflow: hidden
+            - text-overflow: ellipsis
+            - max-width: 100%
+          label: '[[[ const z = states[''select.cello_12345678_parking_zone'']; const h = parseFloat((states[''number.cello_12345678_park_for'']
+            || {}).state || 0); const zn = z && z.state !== ''—'' ? z.state.replace(/\s*\[\d+\]$/, '''') : ''בחר אזור קודם'';
+            return zn + '' · '' + (!h ? ''עד עצירה'' : (h === 1 ? ''שעה'' : (h === 2 ? ''שעתיים'' : h + '' שעות''))); ]]]'
+          show_label: true
+          entity: select.cello_12345678_parking_zone
+        - type: custom:button-card
+          name: אזור לפי המיקום שלי
+          icon: mdi:crosshairs-gps
+          show_state: false
+          tap_action:
+            action: call-service
+            service: button.press
+            target:
+              entity_id: button.cello_12345678_zone_from_location
+          hold_action:
+            action: none
+          styles:
+            card:
+            - border-radius: 22px
+            - direction: rtl
+            - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+            - height: 48px
+            - background: var(--secondary-background-color)
+            - color: var(--primary-text-color)
+            - padding: 0 14px
+            grid:
+            - grid-template-areas: '"i n"'
+            - grid-template-columns: 34px 1fr
+            - grid-template-rows: 1fr
+            - align-content: center
+            - align-items: center
+            - column-gap: 10px
+            - row-gap: 2px
+            - height: 100%
+            img_cell:
+            - width: 34px
+            - height: 34px
+            - justify-content: center
+            - align-self: center
+            icon:
+            - width: 26px
+            - color: var(--primary-text-color)
+            name:
+            - justify-self: start
+            - align-self: center
+            - font-weight: '800'
+            - font-size: 16px
+            label:
+            - justify-self: start
+            - font-size: 12px
+            - opacity: '.9'
+            - white-space: nowrap
+            - overflow: hidden
+            - text-overflow: ellipsis
+            - max-width: 100%
+        - type: heading
+          heading: אזור מהיר
+          heading_style: subtitle
+        - type: grid
+          columns: 2
+          square: false
+          cards:
+          - type: custom:button-card
+            entity: select.cello_12345678_parking_zone
+            name: Home
+            show_icon: false
+            show_state: false
+            tap_action:
+              action: call-service
+              service: select.select_option
+              target:
+                entity_id: select.cello_12345678_parking_zone
+              data:
+                option: CITY – ZONE [111]
+            hold_action:
+              action: none
+            styles:
+              card:
+              - border-radius: 999px
+              - height: 40px
+              - padding: 0 10px
+              - box-shadow: none
+              - background: '[[[ return (entity.state === ''CITY – ZONE [111]'') ? ''#29c5c8'' : ''var(--secondary-background-color)'';
+                  ]]]'
+              - color: '[[[ return (entity.state === ''CITY – ZONE [111]'') ? ''#fff'' : ''var(--primary-text-color)''; ]]]'
+              name:
+              - font-size: 14px
+              - font-weight: '700'
+          - type: custom:button-card
+            entity: select.cello_12345678_parking_zone
+            name: Work
+            show_icon: false
+            show_state: false
+            tap_action:
+              action: call-service
+              service: select.select_option
+              target:
+                entity_id: select.cello_12345678_parking_zone
+              data:
+                option: CITY – ZONE [222]
+            hold_action:
+              action: none
+            styles:
+              card:
+              - border-radius: 999px
+              - height: 40px
+              - padding: 0 10px
+              - box-shadow: none
+              - background: '[[[ return (entity.state === ''CITY – ZONE [222]'') ? ''#29c5c8'' : ''var(--secondary-background-color)'';
+                  ]]]'
+              - color: '[[[ return (entity.state === ''CITY – ZONE [222]'') ? ''#fff'' : ''var(--primary-text-color)''; ]]]'
+              name:
+              - font-size: 14px
+              - font-weight: '700'
+        - type: heading
+          heading: משך חניה
+          heading_style: subtitle
+        - type: grid
+          columns: 4
+          square: false
+          cards:
+          - type: custom:button-card
+            entity: number.cello_12345678_park_for
+            name: שעה
+            show_icon: false
+            show_state: false
+            tap_action:
+              action: call-service
+              service: number.set_value
+              target:
+                entity_id: number.cello_12345678_park_for
+              data:
+                value: 1
+            hold_action:
+              action: none
+            styles:
+              card:
+              - border-radius: 999px
+              - height: 40px
+              - padding: 0 10px
+              - box-shadow: none
+              - background: '[[[ return (parseFloat(entity.state) === 1) ? ''#29c5c8'' : ''var(--secondary-background-color)'';
+                  ]]]'
+              - color: '[[[ return (parseFloat(entity.state) === 1) ? ''#fff'' : ''var(--primary-text-color)''; ]]]'
+              name:
+              - font-size: 14px
+              - font-weight: '700'
+          - type: custom:button-card
+            entity: number.cello_12345678_park_for
+            name: שעתיים
+            show_icon: false
+            show_state: false
+            tap_action:
+              action: call-service
+              service: number.set_value
+              target:
+                entity_id: number.cello_12345678_park_for
+              data:
+                value: 2
+            hold_action:
+              action: none
+            styles:
+              card:
+              - border-radius: 999px
+              - height: 40px
+              - padding: 0 10px
+              - box-shadow: none
+              - background: '[[[ return (parseFloat(entity.state) === 2) ? ''#29c5c8'' : ''var(--secondary-background-color)'';
+                  ]]]'
+              - color: '[[[ return (parseFloat(entity.state) === 2) ? ''#fff'' : ''var(--primary-text-color)''; ]]]'
+              name:
+              - font-size: 14px
+              - font-weight: '700'
+          - type: custom:button-card
+            entity: number.cello_12345678_park_for
+            name: 3 שעות
+            show_icon: false
+            show_state: false
+            tap_action:
+              action: call-service
+              service: number.set_value
+              target:
+                entity_id: number.cello_12345678_park_for
+              data:
+                value: 3
+            hold_action:
+              action: none
+            styles:
+              card:
+              - border-radius: 999px
+              - height: 40px
+              - padding: 0 10px
+              - box-shadow: none
+              - background: '[[[ return (parseFloat(entity.state) === 3) ? ''#29c5c8'' : ''var(--secondary-background-color)'';
+                  ]]]'
+              - color: '[[[ return (parseFloat(entity.state) === 3) ? ''#fff'' : ''var(--primary-text-color)''; ]]]'
+              name:
+              - font-size: 14px
+              - font-weight: '700'
+          - type: custom:button-card
+            entity: number.cello_12345678_park_for
+            name: עד עצירה
+            show_icon: false
+            show_state: false
+            tap_action:
+              action: call-service
+              service: number.set_value
+              target:
+                entity_id: number.cello_12345678_park_for
+              data:
+                value: 0
+            hold_action:
+              action: none
+            styles:
+              card:
+              - border-radius: 999px
+              - height: 40px
+              - padding: 0 10px
+              - box-shadow: none
+              - background: '[[[ return (parseFloat(entity.state) === 0) ? ''#29c5c8'' : ''var(--secondary-background-color)'';
+                  ]]]'
+              - color: '[[[ return (parseFloat(entity.state) === 0) ? ''#fff'' : ''var(--primary-text-color)''; ]]]'
+              name:
+              - font-size: 14px
+              - font-weight: '700'
+        - type: heading
+          heading: חיפוש אזור
+          heading_style: subtitle
+        - type: entities
+          card_mod:
+            style: 'ha-card { border-radius: 22px; }'
+          entities:
+          - entity: text.cello_12345678_zone_search
+            name: עיר או שם אזור
+          - entity: select.cello_12345678_suggested_zone
+            name: תוצאות / ליד הרכב
+    - type: entities
+      card_mod:
+        style: 'ha-card { border-radius: 22px; }'
+      entities:
+      - entity: switch.cello_12345678_auto_renew
+        name: חידוש אוטומטי לפני הסיום
+      - entity: sensor.cello_12345678_spent_this_month
+        name: הוצאה החודש לרכב
+  - type: grid
+    cards:
+    - type: heading
+      heading: החשבון שלי
+      icon: mdi:account-cash
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: custom:button-card
+        entity: sensor.cello_spent_this_month
+        show_name: false
+        show_state: false
+        show_icon: false
+        tap_action:
+          action: more-info
+        custom_fields:
+          ico: <ha-icon icon='mdi:cash-multiple' style='--mdc-icon-size:22px;color:#29c5c8'></ha-icon>
+          val: '[[[ return ''₪'' + Number(entity.state).toFixed(2); ]]]'
+          lbl: הוצאה החודש
+        styles:
+          card:
+          - border-radius: 22px
+          - direction: rtl
+          - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+          - padding: 14px
+          - height: 100px
+          grid:
+          - grid-template-areas: '"ico" "val" "lbl"'
+          - justify-items: start
+          - row-gap: 2px
+          custom_fields:
+            val:
+            - font-size: 22px
+            - font-weight: '900'
+            lbl:
+            - font-size: 12px
+            - color: var(--secondary-text-color)
+      - type: custom:button-card
+        entity: sensor.cello_parkings_this_month
+        show_name: false
+        show_state: false
+        show_icon: false
+        tap_action:
+          action: more-info
+        custom_fields:
+          ico: <ha-icon icon='mdi:car-clock' style='--mdc-icon-size:22px;color:#7c5cff'></ha-icon>
+          val: '[[[ return entity.state; ]]]'
+          lbl: חניות החודש
+        styles:
+          card:
+          - border-radius: 22px
+          - direction: rtl
+          - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+          - padding: 14px
+          - height: 100px
+          grid:
+          - grid-template-areas: '"ico" "val" "lbl"'
+          - justify-items: start
+          - row-gap: 2px
+          custom_fields:
+            val:
+            - font-size: 22px
+            - font-weight: '900'
+            lbl:
+            - font-size: 12px
+            - color: var(--secondary-text-color)
+      - type: custom:button-card
+        entity: sensor.cello_last_invoice
+        show_name: false
+        show_state: false
+        show_icon: false
+        tap_action:
+          action: more-info
+        custom_fields:
+          ico: <ha-icon icon='mdi:receipt-text' style='--mdc-icon-size:22px;color:#f5a524'></ha-icon>
+          val: '[[[ return ''₪'' + entity.state; ]]]'
+          lbl: חשבונית אחרונה
+        styles:
+          card:
+          - border-radius: 22px
+          - direction: rtl
+          - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+          - padding: 14px
+          - height: 100px
+          grid:
+          - grid-template-areas: '"ico" "val" "lbl"'
+          - justify-items: start
+          - row-gap: 2px
+          custom_fields:
+            val:
+            - font-size: 22px
+            - font-weight: '900'
+            lbl:
+            - font-size: 12px
+            - color: var(--secondary-text-color)
+      - type: custom:button-card
+        entity: sensor.cello_payment_card
+        show_name: false
+        show_state: false
+        show_icon: false
+        tap_action:
+          action: more-info
+        custom_fields:
+          ico: <ha-icon icon='mdi:credit-card-outline' style='--mdc-icon-size:22px;color:#3b82f6'></ha-icon>
+          val: '[[[ return ''•••• '' + entity.state; ]]]'
+          lbl: כרטיס אשראי
+        styles:
+          card:
+          - border-radius: 22px
+          - direction: rtl
+          - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+          - padding: 14px
+          - height: 100px
+          grid:
+          - grid-template-areas: '"ico" "val" "lbl"'
+          - justify-items: start
+          - row-gap: 2px
+          custom_fields:
+            val:
+            - font-size: 22px
+            - font-weight: '900'
+            lbl:
+            - font-size: 12px
+            - color: var(--secondary-text-color)
+    - type: entities
+      card_mod:
+        style: 'ha-card { border-radius: 22px; }'
+      entities:
+      - entity: switch.cello_cello_auto_extend
+        name: הארכה אוטומטית (Cello)
+      - entity: switch.cello_cello_auto_stop
+        name: סיום אוטומטי (Cello)
+  - type: grid
+    cards:
+    - type: heading
+      heading: חניות אחרונות
+      icon: mdi:history
+    - type: custom:button-card
+      entity: sensor.cello_spent_this_month
+      show_name: false
+      show_icon: false
+      show_state: false
+      tap_action:
+        action: none
+      hold_action:
+        action: none
+      custom_fields:
+        list: "[[[ \nconst a = states['sensor.cello_spent_this_month'].attributes;\nconst rows = a.last_parkings || [];\n\
+          const inv = states['sensor.cello_last_invoice'];\nconst link = (href, text) => href ? `<a href=\"${href}\" target=\"\
+          _blank\" style=\"flex:1;text-align:center;text-decoration:none;color:#fff;background:#0e8a8e;border-radius:999px;padding:9px\
+          \ 0;font-weight:700;font-size:14px\">${text}</a>` : '';\nconst items = rows.map(p => {\n  const [d, t] = (p.started\
+          \ || '').split(' ');\n  const end = (p.ended || '').split(' ')[1] || '';\n  const [cityName, ...zoneParts] = (p.where\
+          \ || '').split(', ');\n  return `<div style=\"display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px\
+          \ solid var(--divider-color)\">\n    <div style=\"flex:none;width:40px;height:40px;border-radius:12px;background:rgba(41,197,200,.15);display:flex;align-items:center;justify-content:center\"\
+          >\n      <ha-icon icon=\"mdi:parking\" style=\"color:#29c5c8\"></ha-icon></div>\n    <div style=\"flex:1;min-width:0\"\
+          >\n      <div style=\"font-weight:700;font-size:15px\">${cityName}</div>\n      <div style=\"font-size:12px;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis\"\
+          >${zoneParts.join(', ')} · ${(d || '').slice(0, 5)} · <span dir=\"ltr\">${(t || '').slice(0, 5)}–${end.slice(0,\
+          \ 5)}</span></div>\n    </div>\n    <div style=\"font-weight:800;font-size:15px;white-space:nowrap\">₪${p.price}</div>\n\
+          \  </div>`;\n}).join('');\nreturn `<div style=\"text-align:right\">\n  ${items || '<div style=\"padding:12px 0;color:var(--secondary-text-color)\"\
+          >אין חניות החודש</div>'}\n  <div style=\"display:flex;gap:8px;margin-top:12px\">${link(a.report_pdf, '\U0001F4C4\
+          \ דוח חניות')}${link(inv && inv.attributes.url, '\U0001F9FE חשבונית')}</div>\n</div>`;\n ]]]"
+      styles:
+        card:
+        - border-radius: 22px
+        - direction: rtl
+        - box-shadow: 0 6px 18px rgba(0,0,0,.18)
+        - padding: 6px 16px 16px
+        grid:
+        - grid-template-areas: '"list"'
+        custom_fields:
+          list:
+          - justify-self: stretch
+    - type: statistics-graph
+      title: הוצאה חודשית
+      entities:
+      - sensor.cello_spent_this_month
+      stat_types:
+      - max
+      period: month
+      days_to_show: 365
+      chart_type: bar
+      card_mod:
+        style: 'ha-card { border-radius: 22px; }'
