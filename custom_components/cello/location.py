@@ -284,9 +284,20 @@ class CarLocator:
             )
             if city is None:
                 return None
-        known = {c.get("ID"): c for c in self.coordinator.cities}
-        if not city.get("Zones"):
-            city = {**city, "Zones": (known.get(city.get("ID")) or {}).get("Zones") or []}
+        # The GPS answer only names the city: its Zones are empty, or (seen
+        # 2026-10-19) one placeholder "city-wide" with ID 0 that is not a real zone
+        # and matched nothing, so no zone was offered. The full list is the truth.
+        name = (city.get("Name") or "").strip()
+        full = next(
+            (c for c in self.coordinator.cities if c.get("ID") == city.get("ID")), None
+        ) or next(
+            (c for c in self.coordinator.cities if (c.get("Name") or "").strip() == name),
+            None,
+        )
+        if full and full.get("Zones"):
+            city = {**city, "ID": full.get("ID"), "Zones": full["Zones"]}
+        else:
+            city = {**city, "Zones": [z for z in city.get("Zones") or [] if z.get("ID")]}
         if distance:
             city = {**city, "nearby_m": round(distance)}
         return city
