@@ -40,6 +40,10 @@ class CelloError(Exception):
     """The API refused a request or could not be reached."""
 
 
+class CelloNotFound(CelloError):
+    """The API has nothing for the request (Status 404: e.g. no city at a point)."""
+
+
 class CelloAuthError(CelloError):
     """The sign-in token is no longer accepted."""
 
@@ -146,8 +150,8 @@ class CelloApiClient:
                         raise CelloError(
                             f"{path}: HTTP {resp.status}, not JSON"
                         ) from err
-        except aiohttp.ClientError as err:
-            raise CelloError(f"{path}: {err}") from err
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise CelloError(f"{path}: {str(err) or 'timed out'}") from err
         if not isinstance(body, dict):
             return {"Status": 200, "Value": body}
         status = body.get("Status", 200)
@@ -159,6 +163,8 @@ class CelloApiClient:
                     method, path, params=params, json=json, auth=auth, _retry=False
                 )
             raise CelloAuthError(body.get("Message") or "Signed out")
+        if status == 404:
+            raise CelloNotFound(body.get("Message") or f"{path}: Status 404")
         if status not in (200, None):
             raise CelloError(body.get("Message") or f"{path}: Status {status}")
         return body

@@ -339,7 +339,11 @@ class CelloCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         hours: float | None = None,
         until: datetime | None = None,
         accept_message: bool = False,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
+        if zone is None and self.locator is not None:
+            # The car's own zone: make sure it is for where the car is now.
+            await self.locator.ensure_zone_here(car, user_id)
         city_id, zone_id = self.resolve_zone(car, city, zone)
         if until is None:
             hours = self.prefs(car).get("hours", 0) if hours is None else hours
