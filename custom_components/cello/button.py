@@ -27,13 +27,12 @@ class CelloParkingButton(CelloCarEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         key = self._attr_translation_key
+        user_id = self._context.user_id if self._context else None
         if key == "start_parking":
-            await self.coordinator.async_start(self.car)
+            await self.coordinator.async_start(self.car, user_id=user_id)
         elif key == "stop_parking":
             await self.coordinator.async_stop(self.car)
         elif key == "zone_from_location":
-            await self.coordinator.locator.zone_from_location(
-                self.car, self._context.user_id if self._context else None
-            )
+            await self.coordinator.locator.zone_from_location(self.car, user_id)
         else:
             await self.coordinator.async_extend(self.car)

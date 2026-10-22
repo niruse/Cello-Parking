@@ -36,6 +36,15 @@ If you found this project helpful, you can [buy me a coffee](https://coff.ee/nir
 
 ## Options
 Refresh interval, reminder after N minutes (0 = off), auto-renew lead time.
+Per car: the device on the car (a dashcam, head unit or phone tracker, plus a backup), its drive signal,
+who to notify, and how far it may move while parked.
+
+### Zone from the car's location
+With a device attached, the car's **Parking zone** follows it once it has parked: every drive signal off (the
+one set in the options and the ignition of each attached device) and its position still for three minutes.
+Driving past a city does not pick that city, and a spot where Cello has no zone clears the zone. A zone you
+pick by hand stays until the car drives off (picked on the way, it is for the stop ahead). **Start parking**
+looks the zone up again when it was set elsewhere, and refuses rather than park in another city's zone.
 
 Starting, extending and stopping parking costs real money on your Cello account.
 

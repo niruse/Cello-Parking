@@ -6,6 +6,14 @@ was nearest the spot where the parking was started. Cello only maps GPS to a
 city (its zones carry no coordinates), so a suggestion is "this city's zones",
 best first: the zone this car parks in most there, else the city-wide zone.
 
+The car's Parking zone follows its location only once it has parked: every
+drive signal of its devices off (a dashcam's ignition or state, a phone's
+activity) and its position still for a few minutes. Passing a city on the way
+no longer picks that city, and a spot where Cello has no zone clears the zone
+instead of keeping the last city passed. A zone picked by hand stays until
+the car drives again, and Start parking re-checks a zone that was set far
+from where the car is now.
+
 While a parking runs, the car counts as driven away when its location moves
 past the configured distance from the spot Cello stored at start, or when its
 drive signal says driving (a phone: iOS/Android activity "Automotive"). That is
@@ -17,17 +25,20 @@ from __future__ import annotations
 import logging
 import math
 import time
+from datetime import datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components import persistent_notification
 from homeassistant.const import ATTR_LATITUDE, ATTR_LONGITUDE
 from homeassistant.core import Event, HomeAssistant, State, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.util import slugify
 
-from .api import CelloError
+from .api import CelloError, CelloNotFound
 from .const import (
     CONF_CARS,
     CONF_DRIVE_ENTITY,
@@ -54,6 +65,13 @@ LOOKUP_MOVE_M = 1000
 MAX_ACCURACY_M = 100
 SEARCH_LIMIT = 60
 ACTION_STOP = "CELLO_STOP_"
+# Parked = drive signals off and position still this long. Longer than a red
+# light, and than the one-to-two-minute gaps a dashcam's cloud status shows mid-drive.
+STOP_SETTLE_S = 180
+STILL_M = 100  # a move shorter than this keeps the car "still"
+REAPPLY_M = 150  # a parked spot this far from where the zone was set gets a fresh look
+START_STALE_M = 1000  # Start parking re-checks a zone set further than this from the car
+LOOKUP_RETRY_S = 300  # Cello could not be asked: try again after this
 
 
 def distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -88,7 +106,53 @@ def state_position(state: State | None) -> tuple[float, float, float] | None:
 
 # A point Cello does not recognise takes the nearest city it named within this.
 NEARBY_CITY_M = 5000
+# Setting or clearing a parked car's zone trusts that far only spots where a
+# parked car's lookup named the city; any other remembered spot counts within
+# PASSING_CITY_M, so a city the car merely drove past is not picked for a spot
+# where Cello has no zone.
+PASSING_CITY_M = 2000
 MAX_CITY_HITS = 300
+# zone_manual: the zone was picked by hand while parked (kept until the car
+# drives off) or on the way (kept for the stop ahead).
+MANUAL_PARKED = "parked"
+MANUAL_DRIVING = "driving"
+
+
+class StopWatch:
+    """When one car counts as parked: drive signals off and position still."""
+
+    def __init__(self) -> None:
+        self.still_at: tuple[float, float] | None = None
+        self.still_since = 0.0
+        self.quiet_since: float | None = None  # drive signals off since
+        self.drive_since: float | None = None  # drive signals on since
+
+    def update(
+        self, now: float, driving: bool | None, point: tuple[float, float] | None
+    ) -> float | None:
+        """Seconds until the car counts as parked (0: parked), None while it drives.
+
+        ``driving`` is None for a car without any drive signal: then only the
+        position being still counts.
+        """
+        if point is not None and (
+            self.still_at is None or distance_m(self.still_at, point) > STILL_M
+        ):
+            self.still_at, self.still_since = point, now
+        if driving:
+            self.quiet_since = None
+            if self.drive_since is None:
+                self.drive_since = now
+            return None
+        self.drive_since = None
+        if self.quiet_since is None:
+            self.quiet_since = now
+        return max(0.0, max(self.quiet_since, self.still_since) + STOP_SETTLE_S - now)
+
+    def live_while_driving(self) -> bool:
+        """Whether the position moved during this drive (a dashcam that only
+        reports at ignition on/off still shows where the drive began)."""
+        return self.drive_since is not None and self.still_since > self.drive_since
 
 
 class CarLocator:
@@ -103,6 +167,11 @@ class CarLocator:
         self.search: dict[str, str] = {}
         self._lookups: dict[str, tuple[float, tuple[float, float]]] = {}
         self._unsubs: list = []
+        self._watches: dict[str, StopWatch] = {}
+        self._timers: dict[str, Any] = {}
+        self._applying: set[str] = set()
+        self._retry_at: dict[str, float] = {}
+        self._stopped = False
 
     # --- options ----------------------------------------------------------
 
@@ -126,6 +195,40 @@ class CarLocator:
 
     def move_meters(self, car: str) -> float:
         return float(self.car_options(car).get(CONF_MOVE_METERS) or DEFAULT_MOVE_METERS)
+
+    def drive_entities(self, car: str) -> list[str]:
+        """Everything that tells whether the car drives: the drive signal set in
+        the options, plus the ignition (or a phone's activity) of every device
+        attached to the car.
+
+        One device alone can be wrong: a head unit that stays awake through a
+        quick engine restart never reports the second ignition, and a
+        dashcam's cloud status drops to offline for a minute mid-drive.
+        """
+        found: list[str] = []
+        if drive := self.car_options(car).get(CONF_DRIVE_ENTITY):
+            found.append(drive)
+        for tracker in self.trackers(car):
+            for extra in (
+                self._device_entity(tracker, "binary_sensor", "_ignition"),
+                self.activity_sensor(tracker),
+            ):
+                if extra and extra not in found:
+                    found.append(extra)
+        return found
+
+    def driving(self, car: str) -> bool | None:
+        """True while any drive signal says driving, False when every one that
+        reports says not, None when the car has no signal that reports."""
+        known = [
+            state
+            for entity in self.drive_entities(car)
+            if (state := self.hass.states.get(entity)) is not None
+            and state.state not in ("unavailable", "unknown")
+        ]
+        if not known:
+            return None
+        return any(state.state.casefold() in DRIVE_STATES for state in known)
 
     # --- phones -------------------------------------------------------------
 
@@ -192,10 +295,8 @@ class CarLocator:
             if activity := self.activity_sensor(phone):
                 watched.add(activity)
         for car in self.coordinator.data.get("cars", {}):
-            opts = self.car_options(car)
             watched.update(self.trackers(car))
-            if opts.get(CONF_DRIVE_ENTITY):
-                watched.add(opts[CONF_DRIVE_ENTITY])
+            watched.update(self.drive_entities(car))
         if watched:
             self._unsubs.append(
                 async_track_state_change_event(self.hass, sorted(watched), self._on_state)
@@ -208,24 +309,35 @@ class CarLocator:
         for car in self.coordinator.data.get("cars", {}):
             if self.tracker(car):
                 self.hass.async_create_task(self._auto_suggest(car))
+            self._check_parked(car)
 
     @callback
     def async_stop(self) -> None:
+        self._stopped = True
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        for cancel in self._timers.values():
+            cancel()
+        self._timers.clear()
 
     @callback
     def _on_coordinator(self) -> None:
         for car in self.coordinator.data.get("cars", {}):
             self._evaluate(car)
+            if car not in self.coordinator.data.get("active", {}) and car not in self._timers:
+                self._check_parked(car)  # e.g. a parking just ended
 
     @callback
     def _on_state(self, event: Event) -> None:
+        entity_id = event.data["entity_id"]
         for car in self.coordinator.data.get("cars", {}):
             self._evaluate(car)
-            if event.data["entity_id"] in self.trackers(car):
+            trackers = self.trackers(car)
+            if entity_id in trackers:
                 self.hass.async_create_task(self._auto_suggest(car))
+            if entity_id in trackers or entity_id in self.drive_entities(car):
+                self._check_parked(car)
 
     # --- where is the car ---------------------------------------------------
 
@@ -240,14 +352,19 @@ class CarLocator:
         return None, None
 
     async def _city_at(self, lat: float, lng: float) -> dict[str, Any] | None:
+        """Cello's city at a point; None when Cello names none there.
+
+        Raises CelloError when Cello could not be asked.
+        """
         try:
             near = await self.coordinator.client.get_locations_near(lat, lng)
-        except CelloError as err:
-            _LOGGER.debug("No Cello city at %s,%s: %s", lat, lng, err)
+        except CelloNotFound:
             return None
         return near[0] if near else None
 
-    async def lookup_city(self, lat: float, lng: float) -> dict[str, Any] | None:
+    async def lookup_city(
+        self, lat: float, lng: float, *, strict: bool = False, remember: bool = True
+    ) -> dict[str, Any] | None:
         """The Cello city at a point, with its zones (Cello names the city only).
 
         Cello's own lookup only answers at a few exact spots of a city (in
@@ -255,28 +372,36 @@ class CarLocator:
         spot where it did name a city is remembered, and a point it does not
         recognise takes the nearest remembered city within NEARBY_CITY_M;
         ``nearby_m`` then says how far that spot was.
+
+        ``strict`` is for a parked car whose zone is set (or cleared) from the
+        answer: a spot remembered from such a lookup counts within
+        NEARBY_CITY_M, any other within PASSING_CITY_M, and a lookup Cello did
+        not answer (with no remembered spot near) raises CelloError instead of
+        meaning "no city", so an outage does not clear the zone. A lookup made
+        while driving passes ``remember=False``: the road past a city is not
+        that city.
         """
         hits = self.coordinator.city_hits
-        city = await self._city_at(lat, lng)
+        try:
+            city = await self._city_at(lat, lng)
+            failed: CelloError | None = None
+        except CelloError as err:
+            _LOGGER.debug("Cello city lookup at %s,%s failed: %s", lat, lng, err)
+            city, failed = None, err
         distance = 0
         if city is not None:
-            # Remember the spot, unless one already sits within 100 m.
-            if not any(
-                h[2] == city.get("ID") and distance_m((lat, lng), (h[0], h[1])) < 100
-                for h in hits
-            ):
-                hits.append([lat, lng, city.get("ID")])
-                del hits[:-MAX_CITY_HITS]
-                self.coordinator.save()
-                # A car that found no city before may be near this one.
-                for other, where in list(self.where.items()):
-                    if not where.get("city"):
-                        self._lookups.pop(other, None)
-                        self.hass.async_create_task(self._auto_suggest(other))
+            if remember and not self._stopped:
+                self._remember_city(lat, lng, city.get("ID"), parked=strict)
         else:
-            near = [(distance_m((lat, lng), (h[0], h[1])), h[2]) for h in hits]
-            near = [n for n in near if n[0] <= NEARBY_CITY_M]
+            near = []
+            for h in hits:
+                d = distance_m((lat, lng), (h[0], h[1]))
+                parked = len(h) > 3 and bool(h[3])
+                if d <= (NEARBY_CITY_M if parked or not strict else PASSING_CITY_M):
+                    near.append((d, h[2]))
             if not near:
+                if strict and failed is not None:
+                    raise failed
                 return None
             distance, city_id = min(near)
             city = next(
@@ -302,6 +427,25 @@ class CarLocator:
             city = {**city, "nearby_m": round(distance)}
         return city
 
+    def _remember_city(self, lat: float, lng: float, city_id: Any, *, parked: bool) -> None:
+        """Remember a spot where Cello named the city (``parked``: for a parked
+        car), unless one already sits within 100 m."""
+        hits = self.coordinator.city_hits
+        for h in hits:
+            if h[2] == city_id and distance_m((lat, lng), (h[0], h[1])) < 100:
+                if parked and not (len(h) > 3 and h[3]):
+                    h[3:] = [1]
+                    self.coordinator.save()
+                return
+        hits.append([lat, lng, city_id, 1] if parked else [lat, lng, city_id])
+        del hits[:-MAX_CITY_HITS]
+        self.coordinator.save()
+        # A car that found no city before may be near this one.
+        for other, where in list(self.where.items()):
+            if not where.get("city"):
+                self._lookups.pop(other, None)
+                self.hass.async_create_task(self._auto_suggest(other))
+
     def ranked_zones(self, car: str, city: dict[str, Any]) -> list[str]:
         """The city's zone labels, best first: this car's habit, then city-wide."""
         from .coordinator import zone_label
@@ -324,9 +468,19 @@ class CarLocator:
         return [zone_label(city, z) for z in zones]
 
     async def suggest(
-        self, car: str, lat: float, lng: float, source: str | None, *, apply: bool
+        self,
+        car: str,
+        lat: float,
+        lng: float,
+        source: str | None,
+        *,
+        apply: bool,
+        strict: bool = False,
+        remember: bool = True,
     ) -> list[str]:
-        city = await self.lookup_city(lat, lng)
+        """Look up the zones at a point (best first); ``apply`` makes the best
+        one the car's Parking zone, as if picked by hand."""
+        city = await self.lookup_city(lat, lng, strict=strict, remember=remember)
         self.where[car] = {
             **self.where.get(car, {}),
             "city": city,
@@ -336,11 +490,170 @@ class CarLocator:
         ranked = self.ranked_zones(car, city) if city else []
         self.suggestions[car] = ranked
         if apply and ranked:
-            ids = self.coordinator.zone_options.get(ranked[0])
-            if ids:
-                self.coordinator.set_pref(car, "zone", list(ids))
+            self.choose_zone(car, ranked[0])
         self.coordinator.async_update_listeners()
         return ranked
+
+    # --- the car's Parking zone ---------------------------------------------
+
+    def set_zone(
+        self,
+        car: str,
+        label: str | None,
+        point: tuple[float, float] | None,
+        *,
+        manual: str | None = None,
+    ) -> None:
+        """Make ``label`` the car's Parking zone (None: no zone) for the spot
+        ``point``. ``manual`` (MANUAL_PARKED / MANUAL_DRIVING) marks a zone
+        picked by hand; otherwise the next parked spot replaces it."""
+        ids = self.coordinator.zone_options.get(label) if label else None
+        prefs = self.coordinator.prefs(car)
+        prefs["zone"] = list(ids) if ids else None
+        prefs["zone_at"] = [point[0], point[1]] if point else None
+        prefs["zone_manual"] = manual
+        self.coordinator.save()
+        self.coordinator.async_update_listeners()
+
+    def choose_zone(self, car: str, label: str | None) -> None:
+        """The user picked the zone: kept until the car drives off from here,
+        or, picked on the way, for the stop ahead. None (the "—" option) means
+        no zone, back to automatic."""
+        pos, _source = self.car_position(car)
+        point = (pos[0], pos[1]) if pos else None
+        if label is None:
+            self.set_zone(car, None, point)
+        elif self.driving(car):
+            self.set_zone(car, label, None, manual=MANUAL_DRIVING)
+        else:
+            self.set_zone(car, label, point, manual=MANUAL_PARKED)
+
+    def _schedule(self, car: str, delay: float) -> None:
+        if cancel := self._timers.pop(car, None):
+            cancel()
+        self._timers[car] = async_call_later(
+            self.hass, delay, partial(self._check_parked, car)
+        )
+
+    @callback
+    def _check_parked(self, car: str, _now: datetime | None = None) -> None:
+        """Set the zone once the car has parked; never while it drives."""
+        if self._stopped:
+            return
+        if cancel := self._timers.pop(car, None):
+            cancel()
+        prefs = self.coordinator.prefs(car)
+        pos, _source = self.car_position(car)
+        point = (pos[0], pos[1]) if pos else None
+        driving = self.driving(car)
+        at = prefs.get("zone_at")
+        manual = prefs.get("zone_manual")
+        if manual and manual != MANUAL_DRIVING and (
+            driving
+            or (
+                driving is None
+                and point
+                and at
+                and distance_m((at[0], at[1]), point) > REAPPLY_M
+            )
+        ):
+            # Driving off from where it was picked ends a hand-picked zone
+            # (kept in the store, so a restart in between does not lose that).
+            prefs["zone_manual"] = None
+            self.coordinator.save()
+        wait = self._watches.setdefault(car, StopWatch()).update(
+            time.monotonic(), driving, point
+        )
+        if wait == 0 and point and prefs.get("zone_manual") == MANUAL_DRIVING:
+            # Picked on the way: it is this stop's zone now.
+            prefs["zone_manual"] = MANUAL_PARKED
+            prefs["zone_at"] = [point[0], point[1]]
+            self.coordinator.save()
+        if car in self.coordinator.data.get("active", {}):
+            return  # a parking runs: its zone is Cello's
+        if wait is None or point is None:
+            return
+        if wait > 0:
+            self._schedule(car, wait + 1)
+            return
+        if prefs.get("zone_manual"):
+            return
+        at = prefs.get("zone_at")
+        if at and distance_m((at[0], at[1]), point) <= REAPPLY_M:
+            return  # already set for this spot
+        if (retry := self._retry_at.get(car, 0.0) - time.monotonic()) > 0:
+            self._schedule(car, retry + 1)  # Cello failed a moment ago
+            return
+        if car not in self._applying:
+            self.hass.async_create_task(self._apply_parked(car, point))
+
+    async def _apply_parked(self, car: str, point: tuple[float, float]) -> None:
+        """The car parked at ``point``: its zone is the best one there, or none."""
+        self._applying.add(car)
+        prefs = self.coordinator.prefs(car)
+        before = (prefs.get("zone"), prefs.get("zone_at"), prefs.get("zone_manual"))
+        try:
+            ranked = await self.suggest(
+                car, point[0], point[1], self.tracker(car), apply=False, strict=True
+            )
+        except CelloError as err:
+            _LOGGER.debug("Zone for parked car %s not looked up: %s", car, err)
+            if not self._stopped:
+                self._retry_at[car] = time.monotonic() + LOOKUP_RETRY_S
+                self._schedule(car, LOOKUP_RETRY_S)
+            return
+        finally:
+            self._applying.discard(car)
+        self._retry_at.pop(car, None)
+        if (
+            self._stopped
+            or car in self.coordinator.data.get("active", {})
+            or self.driving(car)
+            or (prefs.get("zone"), prefs.get("zone_at"), prefs.get("zone_manual")) != before
+        ):
+            return  # unloaded, parking started, drove off, or picked meanwhile
+        _LOGGER.debug("Car %s parked: zone %s", car, ranked[0] if ranked else None)
+        self.set_zone(car, ranked[0] if ranked else None, point)
+
+    async def ensure_zone_here(self, car: str, user_id: str | None = None) -> None:
+        """Before Start parking without a zone given: the car's zone must be
+        for where the car is now. Otherwise it is looked up again; if Cello has
+        no zone here, or cannot be asked, Start is refused."""
+        prefs = self.coordinator.prefs(car)
+        if prefs.get("zone") and prefs.get("zone_manual"):
+            return  # picked by hand for this stop
+        pos, source = self.car_position(car)
+        watch = self._watches.get(car)
+        if self.driving(car) and not (watch and watch.live_while_driving()):
+            # The engine still runs and the tracker only reports at ignition
+            # on/off: it shows where the drive began. Use the user's phone.
+            phone = self.phone_of_user(user_id)
+            pos = state_position(self.hass.states.get(phone)) if phone else None
+            source = phone
+            if pos is None:
+                raise HomeAssistantError(
+                    f"Car {car} is still driving: turn the engine off, or pick the zone"
+                )
+        if pos is None:
+            return  # nothing to check against
+        here = (pos[0], pos[1])
+        at = prefs.get("zone_at")
+        set_m = distance_m((at[0], at[1]), here) if prefs.get("zone") and at else None
+        if set_m is not None and set_m <= REAPPLY_M:
+            return
+        try:
+            ranked = await self.suggest(car, here[0], here[1], source, apply=False, strict=True)
+        except CelloError as err:
+            if set_m is not None and set_m <= START_STALE_M:
+                return  # Cello is out, and the zone was set close by
+            raise HomeAssistantError(
+                f"Cello could not be asked where car {car} is ({err}): pick the zone first"
+            ) from err
+        if not ranked:
+            raise HomeAssistantError(
+                f"Cello has no parking zone where car {car} is: pick the zone first"
+            )
+        self.set_zone(car, ranked[0], here)
 
     async def zone_from_location(self, car: str, user_id: str | None = None) -> list[str]:
         """Pick the zone where the car (or the pressing user's phone) is now."""
@@ -358,21 +671,18 @@ class CarLocator:
                 latest = max(fresh, key=lambda s: s.last_updated)
                 pos, source = state_position(latest), latest.entity_id
         if pos is None:
-            from homeassistant.exceptions import HomeAssistantError
-
             raise HomeAssistantError(
                 f"No location for car {car}: attach a tracker in the Cello options"
             )
         ranked = await self.suggest(car, pos[0], pos[1], source, apply=True)
         if not ranked:
-            from homeassistant.exceptions import HomeAssistantError
-
             raise HomeAssistantError("Cello has no parking zones at this location")
         return ranked
 
     async def _auto_suggest(self, car: str) -> None:
-        """An attached tracker moved: re-suggest when it reached a new place."""
-        if car in self.coordinator.data.get("active", {}):
+        """An attached tracker moved: refresh the suggestions when it reached a
+        new place. Only the suggestions: the zone itself waits until it parks."""
+        if self._stopped or car in self.coordinator.data.get("active", {}):
             return
         pos = state_position(self.hass.states.get(self.tracker(car) or ""))
         if not pos:
@@ -384,7 +694,10 @@ class CarLocator:
         ):
             return
         self._lookups[car] = (now, pos[:2])
-        await self.suggest(car, pos[0], pos[1], self.tracker(car), apply=True)
+        await self.suggest(
+            car, pos[0], pos[1], self.tracker(car), apply=False,
+            remember=self.driving(car) is not True,
+        )
 
     # --- search -------------------------------------------------------------
 
@@ -453,9 +766,7 @@ class CarLocator:
     def _moved_reason(self, car: str, marks: dict[str, Any], dist: float | None) -> str | None:
         limit = self.move_meters(car)
         if self.tracker(car):
-            drive = self.car_options(car).get(CONF_DRIVE_ENTITY)
-            state = self.hass.states.get(drive) if drive else None
-            driving = state is not None and state.state.casefold() in DRIVE_STATES
+            driving = bool(self.driving(car))
             if driving and (dist is None or dist > DRIVE_SIGNAL_MIN_M):
                 return "driving"
             if dist is not None and dist > limit:

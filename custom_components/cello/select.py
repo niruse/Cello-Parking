@@ -45,8 +45,9 @@ class CelloZoneSelect(CelloCarEntity, SelectEntity):
         return NO_ZONE
 
     async def async_select_option(self, option: str) -> None:
-        ids = self.coordinator.zone_options.get(option)
-        self.coordinator.set_pref(self.car, "zone", list(ids) if ids else None)
+        self.coordinator.locator.choose_zone(
+            self.car, option if option in self.coordinator.zone_options else None
+        )
 
 
 PICK = "…"
@@ -88,6 +89,5 @@ class CelloSuggestedZone(CelloCarEntity, SelectEntity):
         }
 
     async def async_select_option(self, option: str) -> None:
-        ids = self.coordinator.zone_options.get(option)
-        if ids:
-            self.coordinator.set_pref(self.car, "zone", list(ids))
+        if option in self.coordinator.zone_options:
+            self.coordinator.locator.choose_zone(self.car, option)

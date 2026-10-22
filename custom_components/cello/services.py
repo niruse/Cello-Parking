@@ -88,6 +88,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             hours=call.data.get(ATTR_HOURS),
             until=call.data.get(ATTR_UNTIL),
             accept_message=call.data[ATTR_ACCEPT],
+            user_id=call.context.user_id,
         )
         return _result(body)
 
