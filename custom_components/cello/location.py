@@ -564,6 +564,7 @@ class CarLocator:
         wait = self._watches.setdefault(car, StopWatch()).update(
             time.monotonic(), driving, point
         )
+        stale = self._note_drive(car, driving, point)
         if wait == 0 and point and prefs.get("zone_manual") == MANUAL_DRIVING:
             # Picked on the way: it is this stop's zone now.
             prefs["zone_manual"] = MANUAL_PARKED
@@ -578,6 +579,14 @@ class CarLocator:
             return
         if prefs.get("zone_manual"):
             return
+        if stale:
+            # It drove, yet its device still shows where the drive began (it
+            # was offline the whole way): where it is now is unknown, so no
+            # zone rather than the zone of where it left from.
+            if prefs.get("zone") or prefs.get("zone_at"):
+                _LOGGER.debug("Car %s drove without a new position: zone cleared", car)
+                self.set_zone(car, None, None)
+            return
         at = prefs.get("zone_at")
         if at and distance_m((at[0], at[1]), point) <= REAPPLY_M:
             return  # already set for this spot
@@ -586,6 +595,36 @@ class CarLocator:
             return
         if car not in self._applying:
             self.hass.async_create_task(self._apply_parked(car, point))
+
+    def _note_drive(
+        self, car: str, driving: bool | None, point: tuple[float, float] | None
+    ) -> bool:
+        """Remember where each drive began; True while the car's position is
+        still exactly that spot after the drive (its device sent nothing on
+        the way, e.g. a dashcam offline for the whole trip)."""
+        prefs = self.coordinator.prefs(car)
+        drive = prefs.get("drive")
+        here = [round(point[0], 6), round(point[1], 6)] if point else None
+        if driving:
+            if drive is None:
+                prefs["drive"] = {"from": here}
+                self.coordinator.save()
+            return False
+        if drive is None:
+            return False
+        if here is None or drive.get("from") is None or here != drive["from"]:
+            prefs["drive"] = None  # a new position arrived: it is fresh again
+            self.coordinator.save()
+            return False
+        return True
+
+    def position_unknown(self, car: str) -> bool:
+        """The car drove but its device has not said where it is since."""
+        drive = self.coordinator.prefs(car).get("drive")
+        if not drive or drive.get("from") is None or self.driving(car):
+            return False
+        pos, _source = self.car_position(car)
+        return pos is not None and [round(pos[0], 6), round(pos[1], 6)] == drive["from"]
 
     async def _apply_parked(self, car: str, point: tuple[float, float]) -> None:
         """The car parked at ``point``: its zone is the best one there, or none."""
@@ -633,6 +672,17 @@ class CarLocator:
             if pos is None:
                 raise HomeAssistantError(
                     f"Car {car} is still driving: turn the engine off, or pick the zone"
+                )
+        elif self.position_unknown(car):
+            # It drove without its device reporting: the position is where
+            # the drive began. Use the user's phone, or ask for the zone.
+            phone = self.phone_of_user(user_id)
+            pos = state_position(self.hass.states.get(phone)) if phone else None
+            source = phone
+            if pos is None:
+                raise HomeAssistantError(
+                    f"Car {car}'s device has not reported where it is since it drove:"
+                    " pick the zone"
                 )
         if pos is None:
             return  # nothing to check against
