@@ -363,7 +363,13 @@ class CarLocator:
         return near[0] if near else None
 
     async def lookup_city(
-        self, lat: float, lng: float, *, strict: bool = False, remember: bool = True
+        self,
+        lat: float,
+        lng: float,
+        *,
+        strict: bool = False,
+        remember: bool = True,
+        habit: frozenset = frozenset(),
     ) -> dict[str, Any] | None:
         """The Cello city at a point, with its zones (Cello names the city only).
 
@@ -379,7 +385,9 @@ class CarLocator:
         not answer (with no remembered spot near) raises CelloError instead of
         meaning "no city", so an outage does not clear the zone. A lookup made
         while driving passes ``remember=False``: the road past a city is not
-        that city.
+        that city. A city in ``habit`` (where the car parks) counts within
+        NEARBY_CITY_M too: a spot near a city the car keeps parking in is
+        that city, unlike one near a city it only drove past.
         """
         hits = self.coordinator.city_hits
         try:
@@ -396,8 +404,8 @@ class CarLocator:
             near = []
             for h in hits:
                 d = distance_m((lat, lng), (h[0], h[1]))
-                parked = len(h) > 3 and bool(h[3])
-                if d <= (NEARBY_CITY_M if parked or not strict else PASSING_CITY_M):
+                trusted = (len(h) > 3 and bool(h[3])) or h[2] in habit
+                if d <= (NEARBY_CITY_M if trusted or not strict else PASSING_CITY_M):
                     near.append((d, h[2]))
             if not near:
                 if strict and failed is not None:
@@ -446,6 +454,13 @@ class CarLocator:
                 self._lookups.pop(other, None)
                 self.hass.async_create_task(self._auto_suggest(other))
 
+    def habit_cities(self, car: str) -> frozenset:
+        """Cities this car has paid to park in with Cello."""
+        zones = {str(z) for z in (self.coordinator.prefs(car).get("zone_counts") or {})}
+        return frozenset(
+            city for city, zone in self.coordinator.zone_options.values() if str(zone) in zones
+        )
+
     def ranked_zones(self, car: str, city: dict[str, Any]) -> list[str]:
         """The city's zone labels, best first: this car's habit, then city-wide."""
         from .coordinator import zone_label
@@ -480,7 +495,9 @@ class CarLocator:
     ) -> list[str]:
         """Look up the zones at a point (best first); ``apply`` makes the best
         one the car's Parking zone, as if picked by hand."""
-        city = await self.lookup_city(lat, lng, strict=strict, remember=remember)
+        city = await self.lookup_city(
+            lat, lng, strict=strict, remember=remember, habit=self.habit_cities(car)
+        )
         self.where[car] = {
             **self.where.get(car, {}),
             "city": city,
