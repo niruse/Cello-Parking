@@ -363,7 +363,13 @@ class CarLocator:
         return near[0] if near else None
 
     async def lookup_city(
-        self, lat: float, lng: float, *, strict: bool = False, remember: bool = True
+        self,
+        lat: float,
+        lng: float,
+        *,
+        strict: bool = False,
+        remember: bool = True,
+        habit: frozenset = frozenset(),
     ) -> dict[str, Any] | None:
         """The Cello city at a point, with its zones (Cello names the city only).
 
@@ -379,7 +385,9 @@ class CarLocator:
         not answer (with no remembered spot near) raises CelloError instead of
         meaning "no city", so an outage does not clear the zone. A lookup made
         while driving passes ``remember=False``: the road past a city is not
-        that city.
+        that city. A city in ``habit`` (where the car parks) counts within
+        NEARBY_CITY_M too: a spot near a city the car keeps parking in is
+        that city, unlike one near a city it only drove past.
         """
         hits = self.coordinator.city_hits
         try:
@@ -396,8 +404,8 @@ class CarLocator:
             near = []
             for h in hits:
                 d = distance_m((lat, lng), (h[0], h[1]))
-                parked = len(h) > 3 and bool(h[3])
-                if d <= (NEARBY_CITY_M if parked or not strict else PASSING_CITY_M):
+                trusted = (len(h) > 3 and bool(h[3])) or h[2] in habit
+                if d <= (NEARBY_CITY_M if trusted or not strict else PASSING_CITY_M):
                     near.append((d, h[2]))
             if not near:
                 if strict and failed is not None:
@@ -446,6 +454,13 @@ class CarLocator:
                 self._lookups.pop(other, None)
                 self.hass.async_create_task(self._auto_suggest(other))
 
+    def habit_cities(self, car: str) -> frozenset:
+        """Cities this car has paid to park in with Cello."""
+        zones = {str(z) for z in (self.coordinator.prefs(car).get("zone_counts") or {})}
+        return frozenset(
+            city for city, zone in self.coordinator.zone_options.values() if str(zone) in zones
+        )
+
     def ranked_zones(self, car: str, city: dict[str, Any]) -> list[str]:
         """The city's zone labels, best first: this car's habit, then city-wide."""
         from .coordinator import zone_label
@@ -480,7 +495,9 @@ class CarLocator:
     ) -> list[str]:
         """Look up the zones at a point (best first); ``apply`` makes the best
         one the car's Parking zone, as if picked by hand."""
-        city = await self.lookup_city(lat, lng, strict=strict, remember=remember)
+        city = await self.lookup_city(
+            lat, lng, strict=strict, remember=remember, habit=self.habit_cities(car)
+        )
         self.where[car] = {
             **self.where.get(car, {}),
             "city": city,
@@ -564,6 +581,7 @@ class CarLocator:
         wait = self._watches.setdefault(car, StopWatch()).update(
             time.monotonic(), driving, point
         )
+        stale = self._note_drive(car, driving, point)
         if wait == 0 and point and prefs.get("zone_manual") == MANUAL_DRIVING:
             # Picked on the way: it is this stop's zone now.
             prefs["zone_manual"] = MANUAL_PARKED
@@ -578,6 +596,14 @@ class CarLocator:
             return
         if prefs.get("zone_manual"):
             return
+        if stale:
+            # It drove, yet its device still shows where the drive began (it
+            # was offline the whole way): where it is now is unknown, so no
+            # zone rather than the zone of where it left from.
+            if prefs.get("zone") or prefs.get("zone_at"):
+                _LOGGER.debug("Car %s drove without a new position: zone cleared", car)
+                self.set_zone(car, None, None)
+            return
         at = prefs.get("zone_at")
         if at and distance_m((at[0], at[1]), point) <= REAPPLY_M:
             return  # already set for this spot
@@ -586,6 +612,36 @@ class CarLocator:
             return
         if car not in self._applying:
             self.hass.async_create_task(self._apply_parked(car, point))
+
+    def _note_drive(
+        self, car: str, driving: bool | None, point: tuple[float, float] | None
+    ) -> bool:
+        """Remember where each drive began; True while the car's position is
+        still exactly that spot after the drive (its device sent nothing on
+        the way, e.g. a dashcam offline for the whole trip)."""
+        prefs = self.coordinator.prefs(car)
+        drive = prefs.get("drive")
+        here = [round(point[0], 6), round(point[1], 6)] if point else None
+        if driving:
+            if drive is None:
+                prefs["drive"] = {"from": here}
+                self.coordinator.save()
+            return False
+        if drive is None:
+            return False
+        if here is None or drive.get("from") is None or here != drive["from"]:
+            prefs["drive"] = None  # a new position arrived: it is fresh again
+            self.coordinator.save()
+            return False
+        return True
+
+    def position_unknown(self, car: str) -> bool:
+        """The car drove but its device has not said where it is since."""
+        drive = self.coordinator.prefs(car).get("drive")
+        if not drive or drive.get("from") is None or self.driving(car):
+            return False
+        pos, _source = self.car_position(car)
+        return pos is not None and [round(pos[0], 6), round(pos[1], 6)] == drive["from"]
 
     async def _apply_parked(self, car: str, point: tuple[float, float]) -> None:
         """The car parked at ``point``: its zone is the best one there, or none."""
@@ -633,6 +689,17 @@ class CarLocator:
             if pos is None:
                 raise HomeAssistantError(
                     f"Car {car} is still driving: turn the engine off, or pick the zone"
+                )
+        elif self.position_unknown(car):
+            # It drove without its device reporting: the position is where
+            # the drive began. Use the user's phone, or ask for the zone.
+            phone = self.phone_of_user(user_id)
+            pos = state_position(self.hass.states.get(phone)) if phone else None
+            source = phone
+            if pos is None:
+                raise HomeAssistantError(
+                    f"Car {car}'s device has not reported where it is since it drove:"
+                    " pick the zone"
                 )
         if pos is None:
             return  # nothing to check against
