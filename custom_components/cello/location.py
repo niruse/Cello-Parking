@@ -581,7 +581,7 @@ class CarLocator:
         wait = self._watches.setdefault(car, StopWatch()).update(
             time.monotonic(), driving, point
         )
-        stale = self._note_drive(car, driving, point)
+        stale = self._note_drive(car, driving, point, settled=wait == 0)
         if wait == 0 and point and prefs.get("zone_manual") == MANUAL_DRIVING:
             # Picked on the way: it is this stop's zone now.
             prefs["zone_manual"] = MANUAL_PARKED
@@ -614,11 +614,20 @@ class CarLocator:
             self.hass.async_create_task(self._apply_parked(car, point))
 
     def _note_drive(
-        self, car: str, driving: bool | None, point: tuple[float, float] | None
+        self,
+        car: str,
+        driving: bool | None,
+        point: tuple[float, float] | None,
+        *,
+        settled: bool = False,
     ) -> bool:
         """Remember where each drive began; True while the car's position is
         still exactly that spot after the drive (its device sent nothing on
-        the way, e.g. a dashcam offline for the whole trip)."""
+        the way, e.g. a dashcam offline for the whole trip).
+
+        The record lasts until the car has settled: a stop shorter than that
+        (a 4G flap, the camera saying "driving" once more as it parks) is the
+        same drive, so it still begins where the car first left from."""
         prefs = self.coordinator.prefs(car)
         drive = prefs.get("drive")
         here = [round(point[0], 6), round(point[1], 6)] if point else None
@@ -630,8 +639,9 @@ class CarLocator:
         if drive is None:
             return False
         if here is None or drive.get("from") is None or here != drive["from"]:
-            prefs["drive"] = None  # a new position arrived: it is fresh again
-            self.coordinator.save()
+            if settled:
+                prefs["drive"] = None  # a new position arrived: it is fresh again
+                self.coordinator.save()
             return False
         return True
 
